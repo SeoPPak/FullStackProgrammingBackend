@@ -12,7 +12,8 @@ import (
 func ConnectDB() (*mongo.Client, context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	// MongoDB 클라이언트 옵션 설정
-	clientOptions := options.Client().ApplyURI("mongodb://127.0.0.1:27017/") // 로컬 MongoDB URI
+	serverAPI := options.ServerAPI(options.ServerAPIVersion1)
+	clientOptions := options.Client().ApplyURI("mongodb+srv://dbedit:AyochsheJ1@fullstackprogramming.mjgyo.mongodb.net/?retryWrites=true&w=majority&appName=FullStackProgramming").SetServerAPIOptions(serverAPI)
 
 	// MongoDB 클라이언트 생성 및 연결
 	client, err := mongo.Connect(context.TODO(), clientOptions)

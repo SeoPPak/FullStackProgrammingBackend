@@ -6,7 +6,7 @@ import (
 
 func SelectTable(client *mongo.Client) *mongo.Collection {
 	// 데이터베이스 및 컬렉션 선택
-	database := client.Database("local")
+	database := client.Database("FullStackProgramming")
 	collection := database.Collection("User")
 
 	return collection
