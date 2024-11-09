@@ -1,10 +1,10 @@
 package main
 
 import (
-	"oauth/server"
+	"github.com/SeoPPak/FullStackProgrammingBackend/tree/master/auth/server"
 )
 
-func main() {
+func StartServer() {
 	r := server.Setup()
 	r.Run(":5000")
 }

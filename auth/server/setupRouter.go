@@ -2,7 +2,8 @@ package server
 
 import (
 	"net/http"
-	"oauth/route/login"
+
+	"github.com/SeoPPak/FullStackProgrammingBackend/tree/master/auth/route/login"
 
 	"github.com/gin-gonic/gin"
 )
