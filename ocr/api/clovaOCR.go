@@ -27,14 +27,14 @@ type OCRImage struct {
 	TemplateId []string `json:"templateId, omitempty"`
 }
 
-func RequsetOCR(data string) []byte {
+func RequsetOCR(data, contentType string) []byte {
 	ocrURl := "https://3lw4f4mamp.apigw.ntruss.com/custom/v1/35733/81998f2d759c60f8772617c8d9589f4f1f3e83a4f7fca03370e66ebc35487f3a/document/receipt"
 	ocrSecretKey := "d2xXSGVlTElyaGV6VGVEcUFIeXh6d09DTWpOVUdaS0s="
 
 	timestamp := int(time.Now().Unix())
 	ocrImages := make([]OCRImage, 1)
 	ocrImages[0] = OCRImage{
-		Format: "jpg",
+		Format: contentType,
 		Data:   data,
 		Name:   "receipt",
 	}
