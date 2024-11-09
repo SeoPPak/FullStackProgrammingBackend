@@ -58,7 +58,7 @@ func Setup() *gin.Engine {
 	r.POST("/auth/login", login.HandleLogin)
 	r.GET("/profile", AuthRequired(), login.ProfileHandler)
 
-	//r.POST("/db/insert", func(c *gin.Context) { dbroute.InsertUser(c, collection) })
+	r.GET("/ocr/data", login.RequestOCR)
 
 	r.GET("/ping", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
