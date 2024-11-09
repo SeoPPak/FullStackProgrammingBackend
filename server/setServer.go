@@ -2,7 +2,7 @@ package server
 
 import (
 	"net/http"
-	"oauth/route/login"
+	login "server/route"
 
 	"github.com/gin-gonic/gin"
 )

@@ -1,4 +1,4 @@
-package login
+package route
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
-	"oauth/config"
+	"server/config"
 	"time"
 
 	"github.com/gin-gonic/gin"

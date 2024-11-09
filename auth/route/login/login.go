@@ -8,9 +8,8 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"oauth/config"
 	"time"
-
-	"github.com/SeoPPak/FullStackProgrammingBackend/tree/master/auth/config"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/oauth2"

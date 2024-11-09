@@ -1,4 +1,4 @@
-module github.com/SeoPPak/FullStackProgrammingBackend
+module oauth
 
 go 1.23.3
 
