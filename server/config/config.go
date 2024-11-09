@@ -4,16 +4,26 @@ import (
 	"log"
 	"os"
 
+	"github.com/gorilla/sessions"
 	"github.com/joho/godotenv"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
 
 type Config struct {
+	SessionStore      *sessions.CookieStore
 	GoogleLoginConfig oauth2.Config
+	MongoDB           MongoConfig
 }
 
-var AppConfig Config
+type MongoConfig struct {
+	URI      string
+	Database string
+}
+
+var (
+	AppConfig *Config
+)
 
 func GoogleConfig() oauth2.Config {
 	err := godotenv.Load(".env")
@@ -21,7 +31,7 @@ func GoogleConfig() oauth2.Config {
 		log.Fatalf("Some error occured. Err: %s", err)
 	}
 
-	AppConfig.GoogleLoginConfig = oauth2.Config{
+	googleLoginConfig := oauth2.Config{
 		RedirectURL:  "http://localhost:5000/auth/google/callback",
 		ClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
 		ClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
@@ -30,5 +40,37 @@ func GoogleConfig() oauth2.Config {
 		Endpoint: google.Endpoint,
 	}
 
-	return AppConfig.GoogleLoginConfig
+	return googleLoginConfig
+}
+
+func InitSession() *sessions.CookieStore {
+	store := sessions.NewCookieStore([]byte("super-secret-key"))
+	store.Options = &sessions.Options{
+		Path:     "/",
+		MaxAge:   86400 * 7,
+		HttpOnly: true,
+	}
+
+	return store
+}
+
+func InitDB() MongoConfig {
+	mongoConfig := MongoConfig{
+		URI:      "mongodb+srv://dbedit:AyochsheJ1@fullstackprogramming.mjgyo.mongodb.net/?retryWrites=true&w=majority&appName=FullStackProgramming",
+		Database: "FullStackProgramming",
+	}
+
+	return mongoConfig
+}
+
+func Init() {
+	googleLoginConfig := GoogleConfig()
+	store := InitSession()
+	MongoConfig := InitDB()
+	AppConfig = &Config{
+		SessionStore:      store,
+		GoogleLoginConfig: googleLoginConfig,
+		MongoDB:           MongoConfig,
+	}
+
 }

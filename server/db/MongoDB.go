@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"log"
+	"server/config"
 	"time"
 
 	"go.mongodb.org/mongo-driver/mongo"
@@ -13,7 +14,7 @@ func ConnectDB() (*mongo.Client, context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	// MongoDB 클라이언트 옵션 설정
 	serverAPI := options.ServerAPI(options.ServerAPIVersion1)
-	clientOptions := options.Client().ApplyURI("mongodb+srv://dbedit:AyochsheJ1@fullstackprogramming.mjgyo.mongodb.net/?retryWrites=true&w=majority&appName=FullStackProgramming").SetServerAPIOptions(serverAPI)
+	clientOptions := options.Client().ApplyURI(config.AppConfig.MongoDB.URI).SetServerAPIOptions(serverAPI)
 
 	// MongoDB 클라이언트 생성 및 연결
 	client, err := mongo.Connect(context.TODO(), clientOptions)
