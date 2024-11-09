@@ -7,8 +7,8 @@ import (
 )
 
 func main() {
-	data := image.GetImage()
+	data, contentTpye := image.GetImage()
 	//fmt.Printf("from ocr/main: %s\n\n", data)
-	res := api.RequsetOCR(data)
+	res := api.RequsetOCR(data, contentTpye)
 	fmt.Printf(string(res))
 }
