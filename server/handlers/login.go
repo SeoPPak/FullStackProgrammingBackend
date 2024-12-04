@@ -8,29 +8,113 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	jwt "server/auth"
 	"server/config"
 	"server/db"
 	"server/models"
 	"time"
 
+	"github.com/google/uuid"
+	"google.golang.org/api/oauth2/v2"
+	"google.golang.org/api/option"
+
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/gorilla/sessions"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo/options"
 	"golang.org/x/crypto/bcrypt"
 )
 
+type GoogleTokenVerifyRequest struct {
+	IdToken string `json:"idToken"`
+}
+
+func GoogleTokenVerifyHandler(c *gin.Context) {
+	var req GoogleTokenVerifyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
+		return
+	}
+
+	oauth2Service, err := oauth2.NewService(context.Background(),
+		option.WithAPIKey(config.AppConfig.GoogleClientID))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create OAuth service"})
+		return
+	}
+
+	// ID 토큰 검증
+	tokenInfo, err := oauth2Service.Tokeninfo().IdToken(req.IdToken).Do()
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	existingUser := models.User{}
+	err = db.Collection.FindOne(ctx, bson.M{"email": tokenInfo.Email}).Decode(&existingUser)
+	if err != nil {
+		newUser := models.User{
+			Uid:      uuid.NewString(),
+			Email:    tokenInfo.Email,
+			Nickname: "User" + uuid.NewString(),
+		}
+
+		_, err = db.Collection.InsertOne(ctx, newUser)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
+			return
+		}
+	}
+
+	// 사용자 정보 생성
+	user := models.User{
+		Uid:      existingUser.Uid,
+		Email:    existingUser.Email,
+		Nickname: existingUser.Nickname,
+	}
+
+	c, err = jwt.SetAccount(c, &user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set account: " + err.Error()})
+		return
+	}
+	// JWT 토큰 생성
+	token, err := jwt.GenerateToken(c)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"token": token,
+		"user": gin.H{
+			"uid":   user.Uid,
+			"email": user.Email,
+			"name":  user.Nickname,
+		},
+	})
+}
+
+func getHost(c *gin.Context) string {
+	userAgent := c.GetHeader("User-Agent")
+	if strings.Contains(strings.ToLower(userAgent), "android") {
+		return "http://10.0.2.2:5000"
+	}
+	return "http://localhost:5000" // 기본값
+}
+
 func GoogleForm(c *gin.Context) {
+	host := getHost(c)
 	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(
 		"<html>"+
 			"\n<head>\n    "+
 			"<title>Go Oauth2.0 Test</title>\n"+
 			"</head>\n"+
 			"<body>\n<p>"+
-			"<a href='./auth/google/login'>Google Login</a>"+
+			"<a href='"+host+"/auth/google/login'>Google Login</a>"+
 			"</p>\n"+
 			"</body>\n"+
 			"</html>"))
@@ -48,6 +132,9 @@ func GenerateStateOauthCookie(w http.ResponseWriter) string {
 }
 
 func GoogleLoginHandler(c *gin.Context) {
+	// User-Agent 헤더를 확인하여 적절한 리디렉션 URL 설정
+	userAgent := c.GetHeader("User-Agent")
+	config.AppConfig.UpdateRedirectURL(userAgent)
 
 	state := GenerateStateOauthCookie(c.Writer)
 	url := config.AppConfig.GoogleLoginConfig.AuthCodeURL(state)
@@ -55,50 +142,41 @@ func GoogleLoginHandler(c *gin.Context) {
 }
 
 func GoogleAuthCallback(c *gin.Context) {
-	oauthstate, _ := c.Request.Cookie("oauthstate")
-
-	if c.Request.FormValue("state") != oauthstate.Value {
-		log.Printf("invalid google oauth state cookie:%s state:%s\n", oauthstate.Value, c.Request.FormValue("state"))
-		c.Redirect(http.StatusTemporaryRedirect, "/")
-		return
-	}
-
+	//host := getHost(c)
 	data, err := GetGoogleUserInfo(c.Request.FormValue("code"))
 	if err != nil {
-		log.Println(err.Error())
-		c.Redirect(http.StatusTemporaryRedirect, "/")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
 	log.Printf("User Info: %s\n", data)
 
 	user := models.User{
+		Uid:      uuid.NewString(),
 		Email:    data["email"].(string),
 		Nickname: data["name"].(string),
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	filter := bson.M{"email": user.Email}
-	update := bson.M{"$set": user}
-	opts := options.Update().SetUpsert(true)
-
-	_, err = db.Collection.UpdateOne(ctx, filter, update, opts)
+	c, err = jwt.SetAccount(c, &user)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save user"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set account: " + err.Error()})
 		return
 	}
 
-	session := c.MustGet("session").(*sessions.Session)
-	session.Values["authenticated"] = true
-	session.Values["email"] = user.Email
-	if err := session.Save(c.Request, c.Writer); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
+	token, err := jwt.GenerateToken(c)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
 	}
 
-	c.Redirect(http.StatusFound, "/profile")
+	c.JSON(http.StatusOK, gin.H{
+		"token": token,
+		"user": gin.H{
+			"uid":   user.Uid,
+			"email": user.Email,
+			"name":  user.Nickname,
+		},
+	})
 }
 
 func GetGoogleUserInfo(code string) (map[string]interface{}, error) {
@@ -155,7 +233,7 @@ func HandleSignup(c *gin.Context) {
 
 	// Create new user
 	newUser := models.User{
-		Uid:      primitive.NewObjectID(),
+		Uid:      uuid.NewString(),
 		Email:    signupReq.Email,
 		Pw:       string(hashedPassword),
 		Nickname: signupReq.Nickname,
@@ -168,21 +246,28 @@ func HandleSignup(c *gin.Context) {
 		return
 	}
 
-	// Create session for new user
-	session := c.MustGet("session").(*sessions.Session)
-	session.Values["authenticated"] = true
-	session.Values["email"] = newUser.Email
-	session.Values["userId"] = newUser.Uid.Hex()
-	if err := session.Save(c.Request, c.Writer); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
+	c, err = jwt.SetAccount(c, &newUser)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set account: " + err.Error()})
+		return
+	}
+	token, err := jwt.GenerateToken(c)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token: " + err.Error()})
+		return
+	}
+	c, err = jwt.SetAccount(c, &newUser)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fill context: " + err.Error()})
 		return
 	}
 
 	// Return success response
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "User created successfully",
+		"token":   token,
 		"user": gin.H{
-			"id":    newUser.Uid.Hex(),
+			"id":    newUser.Uid,
 			"email": newUser.Email,
 			"name":  newUser.Nickname,
 		},
@@ -193,10 +278,12 @@ func HandleLogin(c *gin.Context) {
 	var loginReq models.LoginRequest
 
 	if err := c.ShouldBindJSON(&loginReq); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "Invalid request format",
+		})
 		return
 	}
-
 	// Normalize email
 	loginReq.Email = strings.ToLower(strings.TrimSpace(loginReq.Email))
 
@@ -204,6 +291,7 @@ func HandleLogin(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	log.Printf("loginReq.Email: %s, login.pw: %s", loginReq.Email, loginReq.Password)
 	existingUser := models.User{}
 	err := db.Collection.FindOne(ctx, bson.M{"email": loginReq.Email}).Decode(&existingUser)
 	if err != nil {
@@ -218,23 +306,36 @@ func HandleLogin(c *gin.Context) {
 		return
 	}
 
-	// Create session for user
-	session := c.MustGet("session").(*sessions.Session)
-	session.Values["authenticated"] = true
-	session.Values["email"] = existingUser.Email
-	session.Values["userId"] = existingUser.Uid.Hex()
-	if err := session.Save(c.Request, c.Writer); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
+	c, err = jwt.SetAccount(c, &existingUser)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set account: " + err.Error()})
+		return
+	}
+	token, err := jwt.GenerateToken(c)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token: " + err.Error()})
+		return
+	}
+	c, err = jwt.SetAccount(c, &existingUser)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fill context: " + err.Error()})
 		return
 	}
 
 	// Return success response
 	c.JSON(http.StatusOK, gin.H{
-		"message": "User logged in successfully",
+		"status": "success",
+		"token":  token,
 		"user": gin.H{
-			"id":    existingUser.Uid.Hex(),
+			"uid":   existingUser.Uid,
 			"email": existingUser.Email,
 			"name":  existingUser.Nickname,
 		},
 	})
+}
+
+func HandleLogout(c *gin.Context) {
+	c.Set("account", nil)
+
+	c.JSON(http.StatusOK, gin.H{"message": "Successfully logged out"})
 }

@@ -1,0 +1,36 @@
+services:
+  dbserver:
+    image: seoppak/dbserver
+    container_name: dbserver
+    build:
+      context: ./dbserver
+      dockerfile: Dockerfile
+      args:
+        - target=dev
+    ports: 
+      - "5000:5000"
+    
+  loginserver:
+    image: seoppak/loginserver
+    container_name: loginserver
+    build:
+      context: ./loginserver
+      dockerfile: Dockerfile
+      args:
+        - target=dev
+    environment:
+      GOOGLE_CLIENT_ID: 974943437893-o6096tiahp33trfri23k9c1uj5k2kt7k.apps.googleusercontent.com
+      GOOGLE_CLIENT_SECRET : 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
+    ports: 
+      - "5001:5000"
+
+  ocrserver:
+    image: seoppak/ocrserver
+    container_name: ocrserver
+    build:
+      context: ./ocrserver
+      dockerfile: Dockerfile
+      args:
+        - target=dev
+    ports: 
+      - "5002:5000"

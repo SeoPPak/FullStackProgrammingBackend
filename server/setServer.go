@@ -5,9 +5,10 @@ import (
 	"server/config"
 	"server/db"
 	login "server/handlers"
+	"server/handlers/middleware"
+	"time"
 
-	"github.com/gorilla/sessions"
-
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
@@ -18,60 +19,50 @@ type User struct {
 	Email    string `json:"email"`
 }
 
-func SessionMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		session, err := config.AppConfig.SessionStore.Get(c.Request, "session-name")
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get session"})
-			c.Abort()
-			return
-		}
-		c.Set("session", session)
-		c.Next()
-	}
-}
-
-func AuthRequired() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		session := c.MustGet("session").(*sessions.Session)
-		if auth, ok := session.Values["authenticated"].(bool); !ok || !auth {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-			c.Abort()
-			return
-		}
-		c.Next()
-	}
-}
-
 func Setup() *gin.Engine {
 	config.Init()
 	db.DBInit()
 
 	r := gin.Default()
 
-	r.Use(SessionMiddleware())
+	config := cors.Config{
+		AllowAllOrigins:  true,
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Length", "Content-Type", "Authorization"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}
+
+	r.Use(cors.New(config))
+
 	r.GET("/", login.GoogleForm)
 	r.GET("/auth/google/login", login.GoogleLoginHandler)
 	r.GET("/auth/google/callback", login.GoogleAuthCallback)
+	r.POST("/auth/google/verify", login.GoogleTokenVerifyHandler)
 
-	r.POST("/signup", login.HandleSignup)
+	r.POST("/auth/signup", login.HandleSignup)
 	r.POST("/auth/login", login.HandleLogin)
-	r.GET("/profile", AuthRequired(), login.ProfileHandler)
+	r.GET("/auth/logout", login.HandleLogout)
 
-	r.GET("/ocr/data", login.RequestOCR)
+	protected := r.Group("/")
+	protected.Use(middleware.AuthMiddleware())
+	{
+		protected.GET("/profile", login.ProfileHandler)
+		protected.POST("/ocr/data", login.RequestOCR)
+		protected.GET("/records", login.SearchByUid)
+		protected.GET("/records/:rid", login.GetRecordInfo)
+		protected.GET("/records/product/:pid", login.GetProductInfo)
+
+		protected.PUT("/records/update/product", login.UpdateProduct)
+		protected.PUT("/records/update/mart", login.UpdateMart)
+		protected.PUT("/records/update/record", login.UpdateRecord)
+	}
 
 	r.GET("/ping", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"message": "pong",
 		})
 	})
-
-	/*
-		protected := r.Group("/")
-		protected.Use(AuthRequired()){
-			protected.GET("/profile", )
-		}
-	*/
 
 	return r
 }

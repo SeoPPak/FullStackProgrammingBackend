@@ -3,15 +3,15 @@ package config
 import (
 	"log"
 	"os"
+	"strings"
 
-	"github.com/gorilla/sessions"
 	"github.com/joho/godotenv"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
 
 type Config struct {
-	SessionStore      *sessions.CookieStore
+	GoogleClientID    string
 	GoogleLoginConfig oauth2.Config
 	MongoDB           MongoConfig
 	OCR               OCRConfig
@@ -28,37 +28,8 @@ type OCRConfig struct {
 }
 
 var (
-	AppConfig *Config
+	AppConfig *Config = &Config{}
 )
-
-func GoogleConfig() oauth2.Config {
-	err := godotenv.Load(".env")
-	if err != nil {
-		log.Fatalf("Some error occured. Err: %s", err)
-	}
-
-	googleLoginConfig := oauth2.Config{
-		RedirectURL:  "http://localhost:5000/auth/google/callback",
-		ClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
-		ClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
-		Scopes: []string{"https://www.googleapis.com/auth/userinfo.email",
-			"https://www.googleapis.com/auth/userinfo.profile"},
-		Endpoint: google.Endpoint,
-	}
-
-	return googleLoginConfig
-}
-
-func InitSession() *sessions.CookieStore {
-	store := sessions.NewCookieStore([]byte("super-secret-key"))
-	store.Options = &sessions.Options{
-		Path:     "/",
-		MaxAge:   86400 * 7,
-		HttpOnly: true,
-	}
-
-	return store
-}
 
 func InitDB() MongoConfig {
 	mongoConfig := MongoConfig{
@@ -80,15 +51,51 @@ func InitOCR() OCRConfig {
 
 func Init() {
 	googleLoginConfig := GoogleConfig()
-	store := InitSession()
 	MongoConfig := InitDB()
 	ocr := InitOCR()
 
 	AppConfig = &Config{
-		SessionStore:      store,
+		GoogleClientID:    "974943437893-ohotc0roqcakgi26o33ubm45ng0fp08e.apps.googleusercontent.com",
 		GoogleLoginConfig: googleLoginConfig,
 		MongoDB:           MongoConfig,
 		OCR:               ocr,
 	}
 
+}
+
+func getRedirectURL(userAgent string) string {
+	if strings.Contains(strings.ToLower(userAgent), "android") {
+		return "http://10.0.2.2:5000/auth/google/callback"
+	}
+	return "http://localhost:5000/auth/google/callback"
+}
+
+func GoogleConfig() oauth2.Config {
+	err := godotenv.Load(".env")
+	if err != nil {
+		log.Fatalf("Some error occured. Err: %s", err)
+	}
+
+	// 기본 리디렉션 URL 설정
+	redirectURL := getRedirectURL("")
+
+	googleLoginConfig := oauth2.Config{
+		RedirectURL:  redirectURL,
+		ClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
+		ClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
+		Scopes: []string{
+			"https://www.googleapis.com/auth/userinfo.email",
+			"https://www.googleapis.com/auth/userinfo.profile",
+		},
+		Endpoint: google.Endpoint,
+	}
+
+	return googleLoginConfig
+}
+
+// UpdateRedirectURL은 사용자 에이전트에 따라 리디렉션 URL을 업데이트합니다
+func (c *Config) UpdateRedirectURL(userAgent string) {
+	config := c.GoogleLoginConfig
+	config.RedirectURL = getRedirectURL(userAgent)
+	c.GoogleLoginConfig = config
 }
