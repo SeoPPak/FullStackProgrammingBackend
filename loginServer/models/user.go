@@ -12,7 +12,7 @@ type DBRequest struct {
 
 type LoginRequest struct {
 	Email    string `bson:"email"`
-	Password string `bson:"password"`
+	Password string `bson:"pw"`
 	Nickname string `bson:"nickname"`
 }
 
@@ -26,6 +26,6 @@ type User struct {
 type SignupRequest struct {
 	Uid      string `bson:"uid"`
 	Email    string `bson:"email"`
-	Pw       string `bson:"password"`
+	Pw       string `bson:"pw"`
 	Nickname string `bson:"name"`
 }

@@ -188,15 +188,12 @@ func parseOCRResult(data map[string]interface{}, uid string) models.RecordInput 
 
 	subres := result["subResults"].([]interface{})[0].(map[string]interface{})
 	products := subres["items"].([]interface{})
-	product := make(chan interface{}, len(products))
 
-	dbProducts := make([]models.DBProduct, len(products))
-	dbProductChan := make(chan models.DBProduct, len(products))
+	// 채널 버퍼 크기를 제품 수만큼 설정
+	dbProducts := make([]models.DBProduct, 0, len(products))
 
-	go func(productChan chan interface{}) {
-		defer close(productChan)
-
-		p := <-productChan
+	// 각 제품을 순차적으로 처리
+	for _, p := range products {
 		product := p.(map[string]interface{})
 
 		productName := product["name"].(map[string]interface{})["formatted"].(map[string]interface{})["value"].(string)
@@ -206,19 +203,12 @@ func parseOCRResult(data map[string]interface{}, uid string) models.RecordInput 
 		intamount, _ := strconv.Atoi(amount)
 		intprice, _ := strconv.Atoi(price)
 
-		dbProductChan <- models.DBProduct{
+		dbProducts = append(dbProducts, models.DBProduct{
 			Pname:  productName,
 			Price:  intprice,
 			Amount: intamount,
-		}
-	}(product)
-
-	for _, p := range products {
-		product <- p
-		productInput := <-dbProductChan
-		dbProducts = append(dbProducts, productInput)
+		})
 	}
-	close(dbProductChan)
 
 	totalPrice := result["totalPrice"].(map[string]interface{})["price"].(map[string]interface{})["formatted"].(map[string]interface{})["value"].(string)
 	intTotalPrice, _ := strconv.Atoi(totalPrice)
@@ -230,6 +220,7 @@ func parseOCRResult(data map[string]interface{}, uid string) models.RecordInput 
 		Rname:     recordName,
 		TimeStamp: recordTime,
 	}
+
 	return models.RecordInput{
 		Uid:        uid,
 		Record:     record,

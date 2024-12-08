@@ -231,6 +231,8 @@ func HandleSignup(c *gin.Context) {
 		return
 	}
 
+	log.Printf("Before Hash pw: %s\n", signupReq.Pw)
+	log.Printf("Hashed password: %s\n", string(hashedPassword))
 	// Create new user
 	newUser := models.User{
 		Uid:      uuid.NewString(),
@@ -263,6 +265,7 @@ func HandleSignup(c *gin.Context) {
 	}
 
 	// Return success response
+	log.Printf("User created successfully: %s\n", newUser.Email)
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "User created successfully",
 		"token":   token,
@@ -278,6 +281,7 @@ func HandleLogin(c *gin.Context) {
 	var loginReq models.LoginRequest
 
 	if err := c.ShouldBindJSON(&loginReq); err != nil {
+		log.Printf("Failed to bind JSON: %s\n", err.Error())
 		c.JSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": "Invalid request format",
@@ -297,10 +301,15 @@ func HandleLogin(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
 		return
 	}
+	log.Printf("Existing user: %s\n", existingUser.Email)
+	log.Printf("Existing user password: %s\n", existingUser.Pw)
 
+	log.Printf("Login request: %s\n", loginReq.Email)
+	log.Printf("Login request: %s\n", loginReq.Password)
 	// Compare password
 	err = bcrypt.CompareHashAndPassword([]byte(existingUser.Pw), []byte(loginReq.Password))
 	if err != nil {
+		log.Printf("Failed to compare password: %s\n", existingUser.Email)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
 		return
 	}
